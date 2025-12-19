@@ -99,3 +99,5 @@ if __name__ == "__main__":
         controller.run()
     except KeyboardInterrupt:
         print("\nShutdown")
+    except Exception:
+        print(f"\n An error occured:{Exception}")
