@@ -4,7 +4,7 @@ import time
 import pygame
 
 # --- CONFIGURATION ---
-PI_IP = "192.168.1.179"
+PI_IP = "x"
 PI_PORT = 5555
 
 # AXIS MAPPING (Your verified IDs)
@@ -38,7 +38,7 @@ class GamepadController:
             return int(1500 + (value * 500))
 
     def run(self):
-        print("\n🎮 CONTROLLER READY")
+        print("\nCONTROLLER READY")
         print("--------------------------------")
         print("  Hold Right Stick DOWN")
         print("  Press [A] to Arm")
@@ -70,13 +70,13 @@ class GamepadController:
                                     self.armed = True
                                     print("\n>>> ARMED (Ready to Fly!) <<<")
                                 else:
-                                    print("\n⚠️  SAFETY BLOCK: Lower throttle to arm!")
+                                    print("\nUH OH SAFETY BLOCK: Lower throttle to arm!")
                                     
                         if event.button == 1: # B Button (Quit)
                             self.running = False
 
                 # 3. SAFETY CLAMP
-                # Ensure we never send illegal MSP values
+                # dont send illegal MSP values
                 roll = max(1000, min(2000, roll))
                 pitch = max(1000, min(2000, pitch))
                 yaw = max(1000, min(2000, yaw))
@@ -88,7 +88,7 @@ class GamepadController:
                 self.sock.sendto(data, (PI_IP, PI_PORT))
                 
                 # 5. PRINT STATUS
-                status = "ARMED!!" if self.armed else "Disarmed"
+                status = "ARMED!!" if self.armed else "Disarmed :/"
                 print(f"\r{status} | R:{roll} P:{pitch} Y:{yaw} T:{throttle}   ", end="")
                 
                 time.sleep(0.02) # 50Hz
