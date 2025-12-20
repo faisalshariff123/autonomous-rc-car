@@ -1,4 +1,119 @@
- only send, don't wait for responses)
+# Pi-Betaflight WiFi Control System — Complete Technical Deep Dive
+
+## Table of Contents
+1. [System Architecture Overview](#system-architecture-overview)
+2. [Networking Layer](#networking-layer)
+3. [Serial Communication & MSP Protocol](#serial-communication--msp-protocol)
+4. [Flight Controller (flight_controller.py)](#flight_controllerpydetailed-breakdown)
+5. [Bridge Server (drone_bridge.py)](#drone_bridgepydetailed-breakdown)
+6. [Gamepad Controller (gamepad_controller.py)](#gamepad_controllerpydetailed-breakdown)
+7. [Data Flow Examples](#data-flow-examples)
+8. [Failsafe & Safety Mechanisms](#failsafe--safety-mechanisms)
+
+---
+
+## System Architecture Overview
+
+Your drone control system has **three layers**:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ LAYER 1: INPUT (Mac + Gamepad)                          │
+│ gamepad_controller.py reads joystick axes,              │
+│ converts to RC values (1000-2000), sends UDP packets    │
+└─────────────────────────────────────────────────────────┘
+                          ↓ WiFi UDP
+                    192.168.1.179:5555
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│ LAYER 2: BRIDGE (Raspberry Pi Zero 2W)                  │
+│ drone_bridge.py listens on UDP port 5555,               │
+│ unpacks RC values, forwards to flight_controller.py     │
+└─────────────────────────────────────────────────────────┘
+                          ↓ USB Serial
+                    /dev/ttyACM0 (115200 baud)
+                          ↓
+┌─────────────────────────────────────────────────────────┐
+│ LAYER 3: FLIGHT CONTROLLER (HAKRC F405 V2)             │
+│ Betaflight FC receives MSP commands,                    │
+│ updates motor speeds via ESCs (via PWM/DShot)           │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Why this architecture?**
+- **Separation of concerns:** Input, bridge, FC are independent
+- **Flexibility:** You can swap gamepad for keyboard, or UDP for TCP, without touching FC code
+- **Failsafe:** The bridge watches for dropped packets; if none arrive for 0.5s, it disarms
+
+---
+
+## Networking Layer
+
+### UDP Protocol Fundamentals
+
+**What is UDP?**
+- **U**ser **D**atagram **P**rotocol — a connectionless protocol (vs. TCP which is connection-oriented)
+- **Fire and forget:** Send a packet, don't wait for confirmation
+- **Fast but unreliable:** No guarantee packet arrives, but very low latency
+- **Perfect for drones:** We don't care if packet #42 gets lost; we only care about the latest stick position
+
+**Your packet structure:**
+```
+Byte Layout (10 bytes total):
+[0-1]   Roll (unsigned short, little-endian) = 1000-2000
+[2-3]   Pitch (unsigned short, little-endian) = 1000-2000
+[4-5]   Throttle (unsigned short, little-endian) = 1000-2000
+[6-7]   Yaw (unsigned short, little-endian) = 1000-2000
+[8-9]   Arm (unsigned short, little-endian) = 1000 (disarmed) or 1800 (armed)
+```
+
+**Example hex dump:**
+```
+Mac sends: Roll=1500, Pitch=1500, Throttle=1000, Yaw=1500, Arm=1000
+
+In binary (little-endian):
+Roll:     1500 = 0x05DC → bytes: DC 05
+Pitch:    1500 = 0x05DC → bytes: DC 05
+Throttle: 1000 = 0x03E8 → bytes: E8 03
+Yaw:      1500 = 0x05DC → bytes: DC 05
+Arm:      1000 = 0x03E8 → bytes: E8 03
+
+Full packet: [DC 05 DC 05 E8 03 DC 05 E8 03]
+```
+
+**Why little-endian?**
+- Modern CPUs (x86, ARM) are little-endian: least-significant byte comes first
+- `struct.pack('<5H', ...)` the `'<'` means "little-endian"
+- If you used `'>'` (big-endian), 1500 would become 1277 on the Pi!
+
+### UDP Socket Creation (drone_bridge.py excerpt)
+
+```python
+self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+self.sock.bind(('0.0.0.0', self.listen_port))
+self.sock.settimeout(0.1)
+```
+
+**Breakdown:**
+- `AF_INET` → IPv4 (not IPv6)
+- `SOCK_DGRAM` → UDP datagram (not `SOCK_STREAM` which is TCP)
+- `bind(('0.0.0.0', 5555))` → Listen on all interfaces, port 5555
+  - `0.0.0.0` means "any IP address on this machine"
+  - Allows you to send from any IP (Mac, phone, etc.)
+- `settimeout(0.1)` → Don't block forever waiting for packets
+  - If no packet arrives in 100ms, raise `socket.timeout` exception
+  - This allows the watchdog to check if connection is dead
+
+---
+
+## Serial Communication & MSP Protocol
+
+### What is MSP?
+
+**MSP** = **MultiWii Serial Protocol**
+- Betaflight's native protocol for communicating over USB/UART
+- Structured binary format (not ASCII)
+- Request-Response model (though we only send, don't wait for responses)
 
 ### MSP Packet Structure
 
