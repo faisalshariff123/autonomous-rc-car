@@ -31,7 +31,7 @@ class GamepadController:
     def map_value(self, value, axis_type):
         if abs(value) < DEADZONE: value = 0.0
         if axis_type == 'throttle':
-            return int(1500 - (value * 500)) # Up(-1)=2000, Down(+1)=1000
+            return int(1500 + (value * 500)) 
         elif axis_type == 'pitch':
             return int(1500 + (value * 500)) # Up(-1)=1000, Down(+1)=2000
         else:
