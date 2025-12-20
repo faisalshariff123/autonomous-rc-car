@@ -1,103 +1,130 @@
-# gamepad_controller.py
 import socket
 import struct
 import time
-import threading
 import pygame
 
-"""try:
-    import pygame
-except ImportError:
-    print("Installing pygame")
-    import subprocess
-    subprocess.check_call(['pip3', 'install', 'pygame'])
-    import pygame"""
-
-# cChange these
-PI_IP = "192.168.1.179"  
+# --- CONFIGURATION ---
+PI_IP = "192.168.1.179"
 PI_PORT = 5555
 
+# CONFIRMED AXIS MAPPING (Based on your test)
+AXIS_ROLL     = 0  # Left Stick X
+AXIS_PITCH    = 1  # Left Stick Y
+AXIS_YAW      = 3  # Right Stick X
+AXIS_THROTTLE = 4  # Right Stick Y
+
+# Deadzone to stop drift
+DEADZONE = 0.05
+
 class GamepadController:
-    def __init__(self, pi_ip, pi_port):
-        self.pi_ip = pi_ip
-        self.pi_port = pi_port
+    def __init__(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        
         pygame.init()
         pygame.joystick.init()
         
-        # Find gamepad
-        joystick_count = pygame.joystick.get_count()
-        if joystick_count == 0:
-            print("No gamepad found")
+        if pygame.joystick.get_count() == 0:
+            print("No gamepad found! Connect one via Bluetooth/USB.")
             exit(1)
         
         self.joy = pygame.joystick.Joystick(0)
         self.joy.init()
-        print(f"Found gamepad: {self.joy.get_name()}")
+        print(f"\n🎮 Connected: {self.joy.get_name()}")
+        print(f"📡 Target: {PI_IP}:{PI_PORT}")
+        print("---------------------------------------------------")
+        print("Controls:")
+        print("  Left Stick:  Pitch & Roll")
+        print("  Right Stick: Throttle & Yaw")
+        print("  [A] Button:  ARM / DISARM")
+        print("  [B] Button:  Quit")
+        print("---------------------------------------------------")
+        print("⚠️  IMPORTANT: Hold Right Stick DOWN to Arm! ⚠️")
+        print("---------------------------------------------------\n")
         
         self.running = True
         self.armed = False
-    
-    def send_rc(self, roll=1500, pitch=1500, throttle=1000, yaw=1500, arm=1000):
-        data = struct.pack('<5H', int(roll), int(pitch), int(throttle), int(yaw), int(arm))
-        self.sock.sendto(data, (self.pi_ip, self.pi_port))
-    
-    def map_analog(self, value, center=1500, min_val=1000, max_val=2000):
-        # Map joystick axis (-1.0 to 1.0) to RC range (1000-2000)
-        return center + (value * (max_val - center))
-    
+        
+    def map_value(self, value, axis_type):
+        # Apply deadzone
+        if abs(value) < DEADZONE:
+            value = 0.0
+            
+        if axis_type == 'throttle':
+            # Stick UP (-1) = 2000 (Full)
+            # Stick CENTER (0) = 1500 (Half)
+            # Stick DOWN (+1) = 1000 (Idle)
+            # Formula: 1500 - (value * 500)
+            return int(1500 - (value * 500))
+        
+        elif axis_type == 'pitch':
+            # Stick UP (-1) = 1000 (Nose Down / Forward)
+            # Stick DOWN (+1) = 2000 (Nose Up / Back)
+            return int(1500 + (value * 500))
+            
+        else:
+            # Roll/Yaw: Left (-1) = 1000, Right (+1) = 2000
+            return int(1500 + (value * 500))
+
     def run(self):
         clock = pygame.time.Clock()
         
-        print("\nGamepad Controls:")
-        print("  Right Stick: Throttle (up) and Yaw (left/right)")
-        print("  Left Stick:  Roll (left/right) and Pitch (up/down)")
-        print("  A Button:    Arm/Disarm")
-        print("  B Button:    Exit\n")
-        
-        while self.running:
-            for event in pygame.event.get():
-                if event.type == pygame.JOYBUTTONDOWN:
-                    if event.button == 0:  # A button
-                        self.armed = not self.armed
-                        print(f"{'ARMED' if self.armed else 'DISARMED'}")
-                    elif event.button == 1:  # B button
-                        print("Exiting...")
-                        self.running = False
-            
-            # Read analog sticks
-            # Left stick: Roll (axis 0), Pitch (axis 1)
-            # Right stick: Yaw (axis 2), Throttle (axis 3)
-            
-            roll_axis = self.joy.get_axis(0)  # -1 to 1
-            pitch_axis = -self.joy.get_axis(1)  # Invert so up is negative
-            yaw_axis = self.joy.get_axis(2)
-            throttle_axis = -self.joy.get_axis(3)  # Invert so up is negative
-            
-            # Map to RC values (1000-2000, center 1500)
-            roll = self.map_analog(roll_axis, center=1500, min_val=1000, max_val=2000)
-            pitch = self.map_analog(pitch_axis, center=1500, min_val=1000, max_val=2000)
-            yaw = self.map_analog(yaw_axis, center=1500, min_val=1000, max_val=2000)
-            throttle = self.map_analog(throttle_axis, center=1000, min_val=1000, max_val=2000)
-            
-            arm = 1800 if self.armed else 1000
-            
-            self.send_rc(roll, pitch, throttle, yaw, arm)
-            
-           
-            print(f"\rR:{roll:5.0f} P:{pitch:5.0f} T:{throttle:5.0f} Y:{yaw:5.0f} {'[ARMED]' if self.armed else '[disarmed]'}", end='', flush=True)
-            
-            clock.tick(50)  # 50Hz
-        
-        pygame.quit()
-        self.sock.close()
+        try:
+            while self.running:
+                # 1. Process Buttons
+                for event in pygame.event.get():
+                    if event.type == pygame.JOYBUTTONDOWN:
+                        if event.button == 0: # A Button (Arm)
+                            self.armed = not self.armed
+                            if self.armed:
+                                print("\n>>> ARMING REQUESTED <<<")
+                            else:
+                                print("\n>>> DISARMED <<<")
+                                
+                        if event.button == 1: # B Button (Quit)
+                            self.running = False
+                            
+                # 2. Read Sticks
+                roll_val  = self.joy.get_axis(AXIS_ROLL)
+                pitch_val = self.joy.get_axis(AXIS_PITCH)
+                yaw_val   = self.joy.get_axis(AXIS_YAW)
+                throt_val = self.joy.get_axis(AXIS_THROTTLE)
+                
+                # 3. Map to MSP 1000-2000
+                roll = self.map_value(roll_val, 'roll')
+                pitch = self.map_value(pitch_val, 'pitch')
+                yaw = self.map_value(yaw_val, 'yaw')
+                throttle = self.map_value(throt_val, 'throttle')
+                
+                # 4. Handle Arming Logic
+                # Betaflight safety: If throttle > 1050, it won't arm.
+                # If we are "ARMED" locally, but throttle is high, warn the user.
+                
+                real_arm_value = 1000
+                status_msg = "[DISARMED]"
+                
+                if self.armed:
+                    if throttle > 1100:
+                        # Safety Warning: Throttle too high to arm!
+                        status_msg = "⚠️ LOWER THROTTLE TO ARM! ⚠️"
+                        real_arm_value = 1000 # Force disarm for safety until stick is down
+                    else:
+                        status_msg = " [ARMED]  "
+                        real_arm_value = 1800
+                
+                # 5. Send Packet
+                data = struct.pack('<5H', roll, pitch, throttle, yaw, real_arm_value)
+                self.sock.sendto(data, (PI_IP, PI_PORT))
+                
+                # 6. Print Status Line
+                print(f"\r{status_msg} R:{roll:4} P:{pitch:4} T:{throttle:4} Y:{yaw:4}", end="")
+                
+                clock.tick(50) # 50Hz
+                
+        except KeyboardInterrupt:
+            print("\nForce Quit")
+        finally:
+            self.sock.close()
+            pygame.quit()
+            print("\nConnection Closed.")
 
 if __name__ == "__main__":
-    controller = GamepadController(PI_IP, PI_PORT)
-    try:
-        controller.run()
-    except KeyboardInterrupt:
-        print("\nShutdown")
-    except Exception:
-        print(f"\n An error occured:{Exception}")
+    GamepadController().run()
