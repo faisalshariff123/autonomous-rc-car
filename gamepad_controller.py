@@ -7,7 +7,7 @@ import pygame
 PI_IP = "x"
 PI_PORT = 5555
 
-# AXIS MAPPING (Your verified IDs)
+# AXIS MAPPIN
 AXIS_ROLL     = 0
 AXIS_PITCH    = 1
 AXIS_YAW      = 3
