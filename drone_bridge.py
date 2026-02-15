@@ -1,9 +1,3 @@
-#!/usr/bin/env python3
-"""
-Pi Drone Bridge
-Receives RC commands from Mac over WiFi, forwards to FC via flight_controller.py
-"""
-
 from flight_controller import FlightController
 import socket
 import struct
