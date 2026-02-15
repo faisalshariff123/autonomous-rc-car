@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-"""
-Betaflight RX_MSP Flight Controller Interface
----------------------------------------------
-Controls a Betaflight FC via USB using the MultiWii Serial Protocol (MSP).
-Implements failsafe-safe continuous streaming of RC commands.
-"""
-
 import serial
 import struct
 import time
