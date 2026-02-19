@@ -1,0 +1,118 @@
+=========================================PROBLEM 1=============================================
+🧱 Hurdle: Blocking Loops vs Event-Driven Keyboard Input
+🚧 The Challenge
+
+While building my RC Car Control System, I needed a way to continuously read keyboard input to control:
+
+Forward
+
+Backward
+
+Left
+
+Right
+
+Stop
+
+My initial approach used a blocking loop:
+
+while True:
+    if keyboard.is_pressed('w'):
+        move_forward()
+
+
+At first, this seemed simple and effective.
+
+However, this design caused architectural problems in a real-time, multi-threaded system.
+
+⚠️ Why Blocking Loops Are Problematic 
+
+====================================
+NOTE:A blocking loop is just a tight while/for loop that keeps the CPU busy waiting for something, preventing the rest of the program from running.
+In single‑threaded code it freezes everything until the loop ends.
+====================================
+
+Here’s what actually happens in a blocking loop:
+
+The program enters the loop.
+
+It checks the keyboard.
+
+It checks again.
+
+It repeats this thousands of times per second.
+
+It never pauses or yields control.
+
+This results in:
+
+High CPU usage
+
+Uneven timing
+
+Delayed execution of other threads
+
+Reduced system responsiveness
+
+In a system where:
+
+The motor control loop must run consistently (e.g., 50Hz)
+
+Steering and throttle updates must remain stable
+
+A blocking loop introduces jitter and instability.
+
+It effectively traps the thread inside the loop and interferes with smooth system coordination.
+
+✅ The Solution: Event-Driven Listener
+
+Instead of polling the keyboard constantly, I switched to an event-driven approach using pynput:
+
+with keyboard.Listener(on_press=on_press) as listener:
+    listener.join()
+
+
+This approach works differently:
+
+The program does NOT constantly check for input.
+
+It waits passively.
+
+When a key is pressed, the system automatically triggers the on_press() callback.
+
+Analogy
+
+Blocking loop → Constantly knocking on a door
+Event listener → Waiting for the doorbell to ring
+
+The event-driven model is more efficient and scalable.
+
+🎯 Why I Chose Event-Driven Architecture
+
+Using an event listener provided:
+
+Efficient CPU usage
+
+Clean separation of concerns
+
+Stable real-time control timing
+
+Better compatibility with multi-threaded design
+
+Improved scalability for system expansion
+
+Most importantly, it allowed the motor control loop to remain consistent and predictable.
+
+🚀 Key Takeaway
+
+This hurdle helped me understand:
+
+The difference between polling and event-driven design
+
+Why blocking behavior is risky in real-time systems
+
+How architectural decisions directly affect performance and stability
+
+Switching to an event-driven keyboard listener made the system cleaner, more reliable, and more professional.
+===============================================================================================
+

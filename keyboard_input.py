@@ -1,56 +1,59 @@
-"""
-Keyboard Input Thread
-Collects user character input from the keyboard
-Sends commands to kbd_queue and status messages to msg_queue
-Runs as a separate thread
-"""
-
+from pynput import keyboard
+from queue import Full, Empty
 import config
 
 def keyboard_input_thread(kbd_queue, msg_queue):
     """
-    Continuously listens for keyboard input and processes control commands
-    
-    Args:
-        kbd_queue: Queue for sending control characters to motor thread
-        msg_queue: Queue for sending status messages to display thread
-    
-    Exits when user presses the quit key (defined in config)
+    Continuously listens for keyboard input
     """
     
-    # Send startup message
-    msg_queue.place_on_queue_non_blocking(config.STARTUP_MESSAGE)
-    msg_queue.place_on_queue_non_blocking(config.QUIT_COMMAND_MESSAGE)
+    msg_queue.put("RC Car Control System Starting...")
+    msg_queue.put("Press 'q' to quit")
     
-    loop forever:
-        # Wait for keyboard character input (blocking call)
-        input_character = block_waiting_to_receive_keyboard_character_input()
-        
-        # Check if this is a meaningful control character
-        if input_character == config.KEY_FORWARD:
-            kbd_queue.place_on_queue_non_blocking(input_character)
-            msg_queue.place_on_queue_non_blocking("Command: FORWARD")
+    def on_press(key):
+
+        try:
+            input_character = key.char
             
-        elif input_character == config.KEY_BACKWARD:
-            kbd_queue.place_on_queue_non_blocking(input_character)
-            msg_queue.place_on_queue_non_blocking("Command: BACKWARD")
-            
-        elif input_character == config.KEY_LEFT:
-            kbd_queue.place_on_queue_non_blocking(input_character)
-            msg_queue.place_on_queue_non_blocking("Command: LEFT")
-            
-        elif input_character == config.KEY_RIGHT:
-            kbd_queue.place_on_queue_non_blocking(input_character)
-            msg_queue.place_on_queue_non_blocking("Command: RIGHT")
-            
-        elif input_character == config.KEY_STOP:
-            kbd_queue.place_on_queue_non_blocking(input_character)
-            msg_queue.place_on_queue_non_blocking("Command: STOP")
-            
-        elif input_character == config.KEY_QUIT:
-            msg_queue.place_on_queue_non_blocking("Quit command received")
-            break
-            
-        else:
-            # Unrecognized key - send informational message
-            msg_queue.place_on_queue_non_blocking(f"Unknown key: {input_character}")
+        except AttributeError:
+
+            if key == keyboard.Key.space:
+                input_character = ' '
+            else:
+                # Ignore special keys silently
+                return
+
+        try:
+            if input_character == 'w':
+                kbd_queue.put_nowait(input_character)
+                msg_queue.put_nowait("Command: FORWARD")
+                
+            elif input_character == 's':
+                kbd_queue.put_nowait(input_character)
+                msg_queue.put_nowait("Command: BACKWARD")
+                
+            elif input_character == 'a':
+                kbd_queue.put_nowait(input_character)
+                msg_queue.put_nowait("Command: LEFT")
+                
+            elif input_character == 'd':
+                kbd_queue.put_nowait(input_character)
+                msg_queue.put_nowait("Command: RIGHT")
+                
+            elif input_character == ' ':
+                kbd_queue.put_nowait(input_character)
+                msg_queue.put_nowait("Command: STOP")
+                
+            elif input_character == 'q':
+                msg_queue.put_nowait("Quit command received")
+                return False  # Stop listener
+                
+            else:
+                msg_queue.put_nowait(f"Unknown key: {input_character}")
+                
+        except Full:
+            # Queue is full - its showing a key press dropped ALERT
+            msg_queue.put_nowait("Warning: Command queue full, input ignored")
+    
+    with keyboard.Listener(on_press=on_press) as listener:
+        listener.join() #waits here until the listener is stopped (when 'q' is pressed) but dosent block the main thread, allowing it to continue processing other tasks while listening for keyboard input
