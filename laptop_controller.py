@@ -1,6 +1,6 @@
 import pygame, socket, time
 
-UDP_IP   = "10.0.0.140"  # Your Pi IP [cite:163]
+UDP_IP   = "10.0.0.140"  # , Pi IP 
 UDP_PORT = 5005
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
@@ -18,7 +18,6 @@ while running:
             running = False
 
     keys = pygame.key.get_pressed()
-    # Build command string: "steering,throttle"
     steering = "N"
     throttle  = "N"
 
